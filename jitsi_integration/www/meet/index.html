@@ -1,0 +1,21 @@
+{% extends "templates/web.html" %}
+
+{% block page_content %}
+    {% if frappe.session.user and frappe.session.user != "Guest" %}
+        <main class="title-body">
+            <h1 class="primary-heading">Authenticating, Please Wait...</h1>
+        </main>
+    {% else %}
+      <div class="page-card">
+        <h5 class="page-card-head">
+          <span class="indicator red">Not Permitted</span>
+        </h5>
+        <div class="page-card-body">
+          <p>You do not have access to this page.</p>
+          <div>
+            <a href="" class="btn btn-primary btn-sm btn-block redirect-link">Login</a>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+{% endblock %}

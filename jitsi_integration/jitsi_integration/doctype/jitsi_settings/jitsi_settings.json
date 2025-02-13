@@ -1,0 +1,63 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-02-12 17:14:30.942406",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "secret_token",
+  "issuers",
+  "column_break_kzdw",
+  "domain",
+  "audiences"
+ ],
+ "fields": [
+  {
+   "fieldname": "secret_token",
+   "fieldtype": "Password",
+   "label": "Secret Token"
+  },
+  {
+   "fieldname": "issuers",
+   "fieldtype": "Data",
+   "label": "Issuers"
+  },
+  {
+   "fieldname": "audiences",
+   "fieldtype": "Data",
+   "label": "Audiences"
+  },
+  {
+   "fieldname": "domain",
+   "fieldtype": "Data",
+   "label": "Domain"
+  },
+  {
+   "fieldname": "column_break_kzdw",
+   "fieldtype": "Column Break"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-02-12 17:17:34.645328",
+ "modified_by": "Administrator",
+ "module": "JitSi Integration",
+ "name": "JitSi Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
