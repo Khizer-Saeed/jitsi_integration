@@ -17,6 +17,23 @@ frappe.ui.form.on("JitSi Meeting", {
                     }
                 })
             });
+
+            if(frm.doc.status === "Created") {
+                frm.add_custom_button(__("Invite"), function() {
+                    frappe.call({
+                        method: "send_invitation",
+                        doc: frm.doc,
+                        args: {
+                            domain: window.location.origin
+                        },
+                        callback(r) {
+                            if(r.message) {
+                            } else {
+                            }
+                        }
+                    })
+                });
+            }
         }
 	}
 });
