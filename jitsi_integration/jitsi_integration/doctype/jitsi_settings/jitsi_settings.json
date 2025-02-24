@@ -5,6 +5,7 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "meet_settings_section",
   "secret_token",
   "issuers",
   "column_break_kzdw",
@@ -35,12 +36,17 @@
   {
    "fieldname": "column_break_kzdw",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "meet_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Meet Settings"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-02-12 17:17:34.645328",
+ "modified": "2025-02-24 12:37:06.814667",
  "modified_by": "Administrator",
  "module": "JitSi Integration",
  "name": "JitSi Settings",

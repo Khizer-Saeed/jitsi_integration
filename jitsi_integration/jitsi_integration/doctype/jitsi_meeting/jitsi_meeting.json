@@ -97,7 +97,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-02-17 17:30:58.331361",
+ "modified": "2025-02-19 12:55:48.948993",
  "modified_by": "Administrator",
  "module": "JitSi Integration",
  "name": "JitSi Meeting",
@@ -131,5 +131,18 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [
+  {
+   "color": "Blue",
+   "title": "Created"
+  },
+  {
+   "color": "Green",
+   "title": "Invited"
+  },
+  {
+   "color": "Yellow",
+   "title": "Rescheduled"
+  }
+ ]
 }
