@@ -31,7 +31,7 @@ def get_jitsi_meeting_url(room):
             domain = frappe.get_single("JitSi Settings").domain
             jitsi_meeting_token = generate_jitsi_meeting_token(full_name=user.full_name, email=user.email)
             if jitsi_meeting_token:
-                meeting_url = f"https://{domain}/{meeting_info[1]}?jwt={jitsi_meeting_token}"
+                meeting_url = f"{domain}/{meeting_info[1]}?jwt={jitsi_meeting_token}"
                 return [True, meeting_url]
             else:
                 return [False, "Error while generating token"]
