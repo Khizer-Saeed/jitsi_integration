@@ -60,19 +60,6 @@ class JitSiMeeting(Document):
 
 	def send_invitation_email(self, email, url):
 		try:
-			message = "You are invited to join the meeting. Please click on the link below to join the meeting." + "<br>" f"{url}" + "<br>" f"<strong>Meeting Details:</strong> {self.meeting_details} <br> <a href='{url}'>Join Meeting</a>"
-			frappe.sendmail(
-				recipients=[email],
-				subject=self.meeting_agenda,
-				message=message
-			)
-		except Exception as e:
-			frappe.log_error("Email Notification Error", f"Exception occurred: {str(e)}")
-			frappe.throw("Something went wrong while sending invitation at email")
-
-	def send_invitation_mattermost(self, participants, part_len, url):
-		try:
-			hv = "are" if part_len > 1 else "is"
 			message = f"""
             You are invited to join the meeting. Please click on the link below to join the meeting.<br><br>
             <strong>Meeting Details:</strong> {self.meeting_details} <br><br>
@@ -86,6 +73,19 @@ class JitSiMeeting(Document):
                 border-radius: 5px;
             ">Join Meeting</a>
         	"""
+			frappe.sendmail(
+				recipients=[email],
+				subject=self.meeting_agenda,
+				message=message
+			)
+		except Exception as e:
+			frappe.log_error("Email Notification Error", f"Exception occurred: {str(e)}")
+			frappe.throw("Something went wrong while sending invitation at email")
+
+	def send_invitation_mattermost(self, participants, part_len, url):
+		try:
+			hv = "are" if part_len > 1 else "is"
+			message = f"{participants} {hv} invited to join the meeting. Please click on the link below to join the meeting." + "\n" + f"{url}" "\n" + f"**Meeting Details:** {self.meeting_details}"
 			settings = frappe.get_single("Mattermost Settings")
    
 			if not settings.mattermost_meeting_channel:
