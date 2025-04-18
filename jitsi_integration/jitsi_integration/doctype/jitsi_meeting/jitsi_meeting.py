@@ -7,7 +7,7 @@ from frappe.model.document import Document
 from jitsi_integration.www.meet.index import get_jitsi_meeting_url
 from jitsi_integration.utils.jitsi_utils import generate_jitsi_meeting_token
 from mattermost_integration.api.mattermost_methods import create_posts
-
+from jitsi_integration.invite import EventScheduler
 
 class JitSiMeeting(Document):
 	@frappe.whitelist()
@@ -15,8 +15,27 @@ class JitSiMeeting(Document):
 		response = get_jitsi_meeting_url(self.name)
 		return response
 
+	def after_insert(self):
+		self.generate_event_uid()
+
+	def generate_event_uid(self):
+		self.db_set("event_uid", f"event-{self.name}-{self.meeting_name}@cerp.com")
+
 	@frappe.whitelist()
 	def send_invitation(self, domain, user_invitation_mode):
+		event = EventScheduler("Staging Development")
+		event.create_event(
+			self.meeting_agenda,
+			self.meeting_details,
+			"JitSi Meet",
+			frappe.utils.get_datetime(self.from_datetime),
+			frappe.utils.get_datetime(self.to_datetime),
+			self.participants + self.guests,
+			self.event_uid
+		)
+
+	@frappe.whitelist()
+	def _send_invitation(self, domain, user_invitation_mode):
 		user_url = f"{domain}/meet?room={self.name}"
 		res = self.invite_guests()
 		if user_invitation_mode == 'email':

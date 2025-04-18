@@ -1,0 +1,199 @@
+import smtplib
+from email.message import EmailMessage
+from caldav import DAVClient
+from datetime import datetime, timedelta
+import random
+import re
+import frappe
+
+class EventScheduler:
+    def __init__(self, frappe_email_account_name=None):
+        if not frappe_email_account_name:
+            frappe_email_account_name = frappe.get_doc("Email Account", {"default_outgoing": 1})
+        # Fetch SMTP settings and Mailcow credentials from Frappe
+        self.mailcow_email, self.mailcow_password, self.mailcow_domain, self.smtp_server, self.smtp_port = self.get_frappe_email_settings(frappe_email_account_name)
+        self.mailcow_caldav_url = f"https://mail.{self.mailcow_domain}/SOGo/dav/{self.mailcow_email}/Calendar/personal/"
+
+    def get_frappe_email_settings(self, frappe_email_account_name=None):
+        # Retrieve email account settings from Frappe
+
+        if not frappe_email_account_name:
+            raise ValueError(f"Email account {frappe_email_account_name} not found in Frappe.")
+        email_account = frappe.get_doc("Email Account", frappe_email_account_name)
+        # Get the Mailcow credentials and SMTP server details
+        mailcow_email = email_account.email_id
+        mailcow_password = email_account.get_password('password')
+        mailcow_domain = email_account.domain
+        smtp_server = email_account.smtp_server
+        smtp_port = email_account.smtp_port or 465  # Default to 465 if not specified
+        
+        return mailcow_email, mailcow_password, mailcow_domain, smtp_server, smtp_port
+
+    def generate_event_uid(self, event_title):
+        # Generates a unique event UID based on the event title and random digits
+        digits = ''.join(random.choices('0123456789', k=8))
+        slug = re.sub(r'[^a-z0-9]+', '-', event_title.lower()).strip('-')
+        return f"event-{digits}-{slug}@{self.mailcow_domain}"
+
+    def split_invitees(self, invitees):
+        # Splits invitees into mailcow users and external users based on domain
+        mailcow = []
+        external = []
+        for user in invitees:
+            user = user.as_dict()
+            domain = user["email"].split("@")[1].lower()
+            if domain == self.mailcow_domain:
+                mailcow.append(user)
+            else:
+                external.append(user)
+        return mailcow, external
+
+    def generate_unique_link(self, invitee_email):
+        # Generate a unique meeting link for each invitee (e.g., for a Zoom meeting)
+        # Here, we'll use the invitee's email to create a unique link, but you can use other data as well
+        meeting_link = f"https://zoom.us/j/{random.randint(1000000000, 9999999999)}?invitee={invitee_email}"
+        return meeting_link
+
+    def create_ics_content(self, event_uid, event_title, event_description, event_location, start, end, invitees):
+        # Generates the ICS content string with unique meeting link for each invitee
+        ics = f"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//UnisolERP//Mailcow Calendar Integration//EN
+CALSCALE:GREGORIAN
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:{event_uid}
+DTSTAMP:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}
+DTSTART:{start.strftime('%Y%m%dT%H%M%SZ')}
+DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}
+SUMMARY:{event_title}
+DESCRIPTION:{event_description}
+LOCATION:{event_location}
+ORGANIZER;CN=ERP Coordinator:mailto:{self.mailcow_email}
+"""
+
+        for user in invitees:
+            user = user.as_dict()
+            unique_link = self.generate_unique_link(user['email'])
+            ics += f"ATTENDEE;CN={user['full_name']};RSVP=TRUE:mailto:{user['email']}\n"
+            ics += f"DESCRIPTION:{event_description} Join the meeting: {unique_link}\n"
+
+        ics += """END:VEVENT
+END:VCALENDAR"""
+
+        return ics
+
+    def add_event_to_mailcow_calendar(self, event_uid, event_title, event_description, event_location, start, end, invitees):
+        # Adds the event to the Mailcow calendar via CalDAV
+        ical_event = self.create_ics_content(event_uid, event_title, event_description, event_location, start, end, invitees)
+
+        client = DAVClient(
+            url=self.mailcow_caldav_url,
+            username=self.mailcow_email,
+            password=self.mailcow_password
+        )
+        principal = client.principal()
+        calendars = principal.calendars()
+        calendar = calendars[0]
+        try:
+            calendar.add_event(ical_event)
+        except Exception as e:
+            frappe.log_error("ICS Content:", ical_event)
+            frappe.throw("Something went wrong.")
+
+        print("✅ Event added to Mailcow calendar")
+
+    def send_email_invites(self, ics_content, external_invitees, event_title):
+        # Sends email invites with the ICS calendar invite as an attachment
+        if not external_invitees:
+            print("ℹ️ No external invitees to email.")
+            return
+
+        with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as smtp:
+            smtp.login(self.mailcow_email, self.mailcow_password)
+            for user in external_invitees:
+                msg = EmailMessage()
+                msg['Subject'] = f"You're Invited: {event_title}"
+                msg['From'] = self.mailcow_email
+                msg['To'] = user['email']
+                msg.set_content(f"Hi {user['full_name']},\n\nYou're invited to {event_title}.\nPlease see the attached updated calendar invite.")
+
+                # Attach the ICS content directly in memory (no file needed)
+                msg.add_attachment(ics_content, maintype='text', subtype='calendar', filename="invite.ics")
+
+                smtp.send_message(msg)
+                print(f"📧 Sent invite to {user['email']}")
+
+    def create_event(self, event_title, event_description, event_location, start, end, invitees, event_uid):
+        # Main function to create the event (generate ICS, add to Mailcow, send invites)
+        event_uid = self.generate_event_uid(event_title)
+        mailcow_invitees, external_invitees = self.split_invitees(invitees)
+
+        ics_content = self.create_ics_content(event_uid, event_title, event_description, event_location, start, end, invitees)
+        self.add_event_to_mailcow_calendar(event_uid, event_title, event_description, event_location, start, end, invitees)
+        self.send_email_invites(ics_content, external_invitees, event_title)
+
+    def reschedule_event(self, event_uid, event_title, event_description, event_location, new_start, new_end, invitees):
+        # Function to reschedule an existing event and send new invites
+        print(f"Rescheduling event: {event_uid}")
+        
+        # Generate new ICS content with the updated time
+        ics_content = self.create_ics_content(event_uid, event_title, event_description, event_location, new_start, new_end, invitees)
+        
+        # Update the event in Mailcow (same UID but updated start and end time)
+        self.add_event_to_mailcow_calendar(event_uid, event_title, event_description, event_location, new_start, new_end, invitees)
+        
+        # Send updated email invites to external users
+        external_invitees = [user for user in invitees if user["email"].split("@")[1].lower() != self.mailcow_domain]
+        self.send_email_invites(ics_content, external_invitees, event_title)
+
+
+# ----------------------------
+# USAGE EXAMPLE
+# ----------------------------
+
+# if __name__ == "__main__":
+#     # Example event details
+#     EVENT_TITLE = "Project Kickoff"
+#     EVENT_DESCRIPTION = "Kickoff meeting for the ERP project."
+#     EVENT_LOCATION = "Zoom"
+#     EVENT_START = datetime(2025, 4, 20, 14, 0)  # UTC
+#     EVENT_END = EVENT_START + timedelta(hours=1)
+
+#     INVITEES = [
+#         {"name": "User1", "email": "user1@unisolerp.com"},
+#         {"name": "External User", "email": "external@example.com"},
+#         {"name": "Client A", "email": "client@example.com"},
+#         {"name": "Internal Team", "email": "internal@unisolerp.com"},
+#     ]
+
+#     # Instantiate the EventScheduler class with Frappe email account
+#     scheduler = EventScheduler(
+#         frappe_email_account_name="cerp@unisolerp.com"  # Default email account in Frappe
+#     )
+
+#     # Create and schedule the event
+#     scheduler.create_event(
+#         event_title=EVENT_TITLE,
+#         event_description=EVENT_DESCRIPTION,
+#         event_location=EVENT_LOCATION,
+#         start=EVENT_START,
+#         end=EVENT_END,
+#         invitees=INVITEES
+#     )
+
+#     # Example of rescheduling the event
+#     NEW_EVENT_START = datetime(2025, 4, 21, 15, 0)  # New start time (UTC)
+#     NEW_EVENT_END = NEW_EVENT_START + timedelta(hours=1)  # New end time
+
+#     # Reschedule the event (you should know the event UID)
+#     EVENT_UID = "event-12345678-project-kickoff@unisolerp.com"  # Example UID
+#     scheduler.reschedule_event(
+#         event_uid=EVENT_UID,
+#         event_title=EVENT_TITLE,
+#         event_description=EVENT_DESCRIPTION,
+#         event_location=EVENT_LOCATION,
+#         new_start=NEW_EVENT_START,
+#         new_end=NEW_EVENT_END,
+#         invitees=INVITEES
+#     )
