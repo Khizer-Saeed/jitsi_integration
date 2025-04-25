@@ -2,14 +2,17 @@ import smtplib
 from email.message import EmailMessage
 from caldav import DAVClient
 from datetime import datetime, timedelta
+from jitsi_integration.utils.jitsi_utils import generate_jitsi_meeting_token
 import random
 import re
 import frappe
 
 class EventScheduler:
-    def __init__(self, frappe_email_account_name=None):
+    def __init__(self, user_url, meeting_name, frappe_email_account_name=None):
         if not frappe_email_account_name:
             frappe_email_account_name = frappe.get_doc("Email Account", {"default_outgoing": 1})
+        self.user_url = user_url
+        self.meeting_name = meeting_name
         # Fetch SMTP settings and Mailcow credentials from Frappe
         self.mailcow_email, self.mailcow_password, self.mailcow_domain, self.smtp_server, self.smtp_port = self.get_frappe_email_settings(frappe_email_account_name)
         self.mailcow_caldav_url = f"https://mail.{self.mailcow_domain}/SOGo/dav/{self.mailcow_email}/Calendar/personal/"
@@ -48,10 +51,15 @@ class EventScheduler:
                 external.append(user)
         return mailcow, external
 
-    def generate_unique_link(self, invitee_email):
+    def generate_unique_link(self, full_name, invitee_email):
         # Generate a unique meeting link for each invitee (e.g., for a Zoom meeting)
         # Here, we'll use the invitee's email to create a unique link, but you can use other data as well
-        meeting_link = f"https://zoom.us/j/{random.randint(1000000000, 9999999999)}?invitee={invitee_email}"
+        # meeting_link = f"https://zoom.us/j/{random.randint(1000000000, 9999999999)}?invitee={invitee_email}"
+        settings = frappe.get_single('JitSi Settings')
+        if not settings.domain:
+            frappe.throw("Domain not set in JitSi Settings.")
+        token = generate_jitsi_meeting_token(full_name=full_name, email=invitee_email)
+        meeting_link = f"{settings.domain}/{self.meeting_name}?jwt={token}"
         return meeting_link
 
     def create_ics_content(self, event_uid, event_title, event_description, event_location, start, end, invitees):
@@ -74,9 +82,9 @@ ORGANIZER;CN=ERP Coordinator:mailto:{self.mailcow_email}
 
         for user in invitees:
             user = user.as_dict()
-            unique_link = self.generate_unique_link(user['email'])
+            # unique_link = self.generate_unique_link(user['email'])
             ics += f"ATTENDEE;CN={user['full_name']};RSVP=TRUE:mailto:{user['email']}\n"
-            ics += f"DESCRIPTION:{event_description} Join the meeting: {unique_link}\n"
+            ics += f"DESCRIPTION:{event_description} Join the meeting: {self.user_url}\n"
 
         ics += """END:VEVENT
 END:VCALENDAR"""
@@ -112,14 +120,15 @@ END:VCALENDAR"""
         with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as smtp:
             smtp.login(self.mailcow_email, self.mailcow_password)
             for user in external_invitees:
+                meeting_link = self.generate_unique_link(user['full_name'], user['email'])
                 msg = EmailMessage()
                 msg['Subject'] = f"You're Invited: {event_title}"
                 msg['From'] = self.mailcow_email
                 msg['To'] = user['email']
-                msg.set_content(f"Hi {user['full_name']},\n\nYou're invited to {event_title}.\nPlease see the attached updated calendar invite.")
+                msg.set_content(f"Hi {user['full_name']},\n\nYou're invited to {event_title}.\nPlease see the attached updated calendar invite.\n\nJoin the meeting: {meeting_link}")
 
                 # Attach the ICS content directly in memory (no file needed)
-                msg.add_attachment(ics_content, maintype='text', subtype='calendar', filename="invite.ics")
+                msg.add_attachment(ics_content.encode('utf-8'), maintype='text', subtype='calendar', filename="invite.ics")
 
                 smtp.send_message(msg)
                 print(f"📧 Sent invite to {user['email']}")
