@@ -77,5 +77,5 @@ frappe.ui.form.on("JitSi Meeting", {
                 frm.set_value("to_datetime", "");
             }
         }
-    }
+    },
 });

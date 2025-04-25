@@ -10,6 +10,9 @@ from mattermost_integration.api.mattermost_methods import create_posts
 from jitsi_integration.invite import EventScheduler
 
 class JitSiMeeting(Document):
+	def before_validate(self):
+		self.meeting_name = "_".join(self.meeting_name.split(" "))
+		
 	@frappe.whitelist()
 	def go_to_meeting(self):
 		response = get_jitsi_meeting_url(self.name)
@@ -23,7 +26,8 @@ class JitSiMeeting(Document):
 
 	@frappe.whitelist()
 	def send_invitation(self, domain, user_invitation_mode):
-		event = EventScheduler("Staging Development")
+		user_url = f"{domain}/meet?room={self.name}"
+		event = EventScheduler(user_url, self.meeting_name, "Staging Development")
 		event.create_event(
 			self.meeting_agenda,
 			self.meeting_details,
@@ -67,7 +71,7 @@ class JitSiMeeting(Document):
 					participants += f"{full_name}{symbol}"
 					part_len += 1
 			return self.send_invitation_mattermost(participants, part_len, url)
-    
+
 	def invite_guests(self):
 		if len(self.guests) > 0:
 			for guest in self.guests:
@@ -80,18 +84,18 @@ class JitSiMeeting(Document):
 	def send_invitation_email(self, email, url):
 		try:
 			message = f"""
-            You are invited to join the meeting. Please click on the link below to join the meeting.<br><br>
-            <strong>Meeting Details:</strong> {self.meeting_details} <br><br>
-            <a href="{url}" style="
-                display: inline-block;
-                padding: 10px 20px;
-                font-size: 16px;
-                color: #fff;
-                background-color: #007bff;
-                text-decoration: none;
-                border-radius: 5px;
-            ">Join Meeting</a>
-        	"""
+			You are invited to join the meeting. Please click on the link below to join the meeting.<br><br>
+			<strong>Meeting Details:</strong> {self.meeting_details} <br><br>
+			<a href="{url}" style="
+				display: inline-block;
+				padding: 10px 20px;
+				font-size: 16px;
+				color: #fff;
+				background-color: #007bff;
+				text-decoration: none;
+				border-radius: 5px;
+			">Join Meeting</a>
+			"""
 			frappe.sendmail(
 				recipients=[email],
 				subject=self.meeting_agenda,
@@ -106,14 +110,14 @@ class JitSiMeeting(Document):
 			hv = "are" if part_len > 1 else "is"
 			message = f"{participants} {hv} invited to join the meeting. Please click on the link below to join the meeting." + "\n" + f"{url}" "\n" + f"**Meeting Details:** {self.meeting_details}"
 			settings = frappe.get_single("Mattermost Settings")
-   
+
 			if not settings.mattermost_meeting_channel:
 				frappe.throw("Please set the Mattermost Meeting Channel in Mattermost Settings")
 
 			channel_id = frappe.db.get_value("Mattermost Channel", settings.mattermost_meeting_channel, "channel_id")
 			if not channel_id:
 				frappe.throw("Channel ID not found for the Mattermost Meeting Channel")
-   
+
 			response = create_posts(channel_id, message)
 			if response and response.get("id"):
 				return "Invitation sent successfully"
