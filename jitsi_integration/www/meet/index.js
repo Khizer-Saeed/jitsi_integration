@@ -13,7 +13,7 @@ window.addEventListener("DOMContentLoaded", function() {
         const roomName = urlParams.get('room');
         const guest = urlParams.get('guest');
 
-        if(!guest) {
+        if(!guest && frappe.session.user === "Guest") {
             mainBody.classList.add("hidden");
             unauthorized.classList.remove("hidden");
         }
