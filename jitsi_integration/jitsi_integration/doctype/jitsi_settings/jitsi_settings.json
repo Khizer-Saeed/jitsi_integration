@@ -8,6 +8,8 @@
   "meet_settings_section",
   "secret_token",
   "issuers",
+  "encryption_key",
+  "generate_key",
   "column_break_kzdw",
   "domain",
   "audiences"
@@ -41,12 +43,23 @@
    "fieldname": "meet_settings_section",
    "fieldtype": "Section Break",
    "label": "Meet Settings"
+  },
+  {
+   "fieldname": "encryption_key",
+   "fieldtype": "Password",
+   "label": "Encryption Key"
+  },
+  {
+   "fieldname": "generate_key",
+   "fieldtype": "Button",
+   "label": "Generate Key"
   }
  ],
+ "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-02-24 12:37:06.814667",
+ "modified": "2025-04-26 11:50:04.842026",
  "modified_by": "Administrator",
  "module": "JitSi Integration",
  "name": "JitSi Settings",
