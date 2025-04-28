@@ -28,7 +28,7 @@ class JitSiMeeting(Document):
 	def send_invitation(self, domain, user_invitation_mode):
 		user_url = f"{domain}/meet?room={self.name}"
 		event = EventScheduler(user_url, self.meeting_name, "Staging Development")
-		event.create_event(
+		response = event.create_event(
 			self.meeting_agenda,
 			self.meeting_details,
 			"JitSi Meet",
@@ -37,6 +37,8 @@ class JitSiMeeting(Document):
 			self.participants + self.guests,
 			self.event_uid
 		)
+
+		return response
 
 	@frappe.whitelist()
 	def _send_invitation(self, domain, user_invitation_mode):

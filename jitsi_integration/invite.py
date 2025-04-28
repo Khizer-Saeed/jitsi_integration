@@ -1,11 +1,12 @@
 import smtplib
 from email.message import EmailMessage
 from caldav import DAVClient
-from datetime import datetime, timedelta
+from datetime import datetime
 from jitsi_integration.utils.jitsi_utils import generate_jitsi_meeting_token
 import random
 import re
 import frappe
+from jitsi_integration.utils.jitsi_utils import encrypt_info
 
 class EventScheduler:
     def __init__(self, user_url, meeting_name, frappe_email_account_name=None):
@@ -46,8 +47,10 @@ class EventScheduler:
             user = user.as_dict()
             domain = user["email"].split("@")[1].lower()
             if domain == self.mailcow_domain:
+                user["link"] = self.user_url
                 mailcow.append(user)
             else:
+                user["link"] = f"{self.user_url}&guest={encrypt_info(user['email'])}"
                 external.append(user)
         return mailcow, external
 
@@ -62,7 +65,7 @@ class EventScheduler:
         meeting_link = f"{settings.domain}/{self.meeting_name}?jwt={token}"
         return meeting_link
 
-    def create_ics_content(self, event_uid, event_title, event_description, event_location, start, end, invitees):
+    def create_ics_content(self, event_uid, event_title, event_description, event_location, start, end, user, invitees):
         # Generates the ICS content string with unique meeting link for each invitee
         ics = f"""BEGIN:VCALENDAR
 VERSION:2.0
@@ -75,16 +78,14 @@ DTSTAMP:{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}
 DTSTART:{start.strftime('%Y%m%dT%H%M%SZ')}
 DTEND:{end.strftime('%Y%m%dT%H%M%SZ')}
 SUMMARY:{event_title}
-DESCRIPTION:{event_description}
+DESCRIPTION:{event_description} Join the meeting: {user['link']}
 LOCATION:{event_location}
 ORGANIZER;CN=ERP Coordinator:mailto:{self.mailcow_email}
 """
-
-        for user in invitees:
-            user = user.as_dict()
+        for u in invitees:
             # unique_link = self.generate_unique_link(user['email'])
-            ics += f"ATTENDEE;CN={user['full_name']};RSVP=TRUE:mailto:{user['email']}\n"
-            ics += f"DESCRIPTION:{event_description} Join the meeting: {self.user_url}\n"
+            ics += f"ATTENDEE;CN={u['full_name']};RSVP=TRUE:mailto:{u['email']}\n"
+            # ics += f"DESCRIPTION:{event_description} Join the meeting: {self.user_url}\n" 
 
         ics += """END:VEVENT
 END:VCALENDAR"""
@@ -93,8 +94,6 @@ END:VCALENDAR"""
 
     def add_event_to_mailcow_calendar(self, event_uid, event_title, event_description, event_location, start, end, invitees):
         # Adds the event to the Mailcow calendar via CalDAV
-        ical_event = self.create_ics_content(event_uid, event_title, event_description, event_location, start, end, invitees)
-
         client = DAVClient(
             url=self.mailcow_caldav_url,
             username=self.mailcow_email,
@@ -103,44 +102,46 @@ END:VCALENDAR"""
         principal = client.principal()
         calendars = principal.calendars()
         calendar = calendars[0]
-        try:
-            calendar.add_event(ical_event)
-        except Exception as e:
-            frappe.log_error("ICS Content:", ical_event)
-            frappe.throw("Something went wrong.")
+        
+        for user in invitees:
+            ical_event = self.create_ics_content(event_uid, event_title, event_description, event_location, start, end, user, invitees)
+            try:
+                self.send_email_invites(ical_event, user, event_title)
+            except Exception as e:
+                frappe.log_error("ICS Content:", ical_event)
+                frappe.throw("Something went wrong.")
 
         print("✅ Event added to Mailcow calendar")
 
-    def send_email_invites(self, ics_content, external_invitees, event_title):
+    def send_email_invites(self, ics_content, user, event_title):
         # Sends email invites with the ICS calendar invite as an attachment
-        if not external_invitees:
-            print("ℹ️ No external invitees to email.")
+        if not user:
+            print("ℹ️ No invitee to email.")
             return
 
         with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port) as smtp:
             smtp.login(self.mailcow_email, self.mailcow_password)
-            for user in external_invitees:
-                meeting_link = self.generate_unique_link(user['full_name'], user['email'])
-                msg = EmailMessage()
-                msg['Subject'] = f"You're Invited: {event_title}"
-                msg['From'] = self.mailcow_email
-                msg['To'] = user['email']
-                msg.set_content(f"Hi {user['full_name']},\n\nYou're invited to {event_title}.\nPlease see the attached updated calendar invite.\n\nJoin the meeting: {meeting_link}")
+            msg = EmailMessage()
+            email = user['email']
+            meeting_link = user['link']
+            msg['Subject'] = f"You're Invited: {event_title}"
+            msg['From'] = self.mailcow_email
+            msg['To'] = email
+            msg.set_content(f"Hi {user['full_name']},\n\nYou're invited to {event_title}.\nPlease see the attached updated calendar invite.\n\nJoin the meeting: {meeting_link}")
 
-                # Attach the ICS content directly in memory (no file needed)
-                msg.add_attachment(ics_content.encode('utf-8'), maintype='text', subtype='calendar', filename="invite.ics")
+            # Attach the ICS content directly in memory (no file needed)
+            msg.add_attachment(ics_content.encode('utf-8'), maintype='text', subtype='calendar', filename="invite.ics")
 
-                smtp.send_message(msg)
-                print(f"📧 Sent invite to {user['email']}")
+            smtp.send_message(msg)
+            print(f"📧 Sent invite to {user['email']}")
 
     def create_event(self, event_title, event_description, event_location, start, end, invitees, event_uid):
         # Main function to create the event (generate ICS, add to Mailcow, send invites)
         event_uid = self.generate_event_uid(event_title)
         mailcow_invitees, external_invitees = self.split_invitees(invitees)
-
-        ics_content = self.create_ics_content(event_uid, event_title, event_description, event_location, start, end, invitees)
-        self.add_event_to_mailcow_calendar(event_uid, event_title, event_description, event_location, start, end, invitees)
-        self.send_email_invites(ics_content, external_invitees, event_title)
+        sep_invitees = [*mailcow_invitees, *external_invitees]
+        self.add_event_to_mailcow_calendar(event_uid, event_title, event_description, event_location, start, end, sep_invitees)
+        return True
 
     def reschedule_event(self, event_uid, event_title, event_description, event_location, new_start, new_end, invitees):
         # Function to reschedule an existing event and send new invites

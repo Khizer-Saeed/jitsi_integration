@@ -43,7 +43,7 @@ frappe.ui.form.on("JitSi Meeting", {
                             },
                             callback(r) {
                                 if(r.message) {
-                                    frappe.msgprint(r.message);
+                                    frappe.msgprint("Invitation sent successfully");
                                     frm.set_value("status", "Invited");
                                     frm.save();
                                 }
