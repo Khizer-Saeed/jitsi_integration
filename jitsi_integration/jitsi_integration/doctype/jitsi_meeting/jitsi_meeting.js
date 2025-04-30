@@ -37,6 +37,8 @@ frappe.ui.form.on("JitSi Meeting", {
                         frappe.call({
                             method: "send_invitation",
                             doc: frm.doc,
+                            freeze: true,
+                            freeze_message: "Sending invitation...",
                             args: {
                                 domain: window.location.origin,
                                 user_invitation_mode: values.mode.toLowerCase()
@@ -44,8 +46,10 @@ frappe.ui.form.on("JitSi Meeting", {
                             callback(r) {
                                 if(r.message) {
                                     frappe.msgprint("Invitation sent successfully");
-                                    frm.set_value("status", "Invited");
-                                    frm.save();
+                                    setTimeout(() => {
+                                        frm.set_value("status", "Invited");
+                                        frm.save();
+                                    }, 1000);
                                 }
                             }
                         })
